@@ -3,12 +3,13 @@ package dogma
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/mux"
-	"io"
+	"github.com/labstack/echo/v4"
 	"log"
 	"net/http"
 	"reflect"
 )
+
+type Context = echo.Context
 
 type Method struct {
 	Name   string `json:"name"`
@@ -16,14 +17,16 @@ type Method struct {
 }
 
 type Server struct {
-	router *mux.Router
+	router *echo.Group
 	desc   map[reflect.Type]Method
+	logger *log.Logger
 }
 
-func New(router *mux.Router, desc map[reflect.Type]Method) *Server {
+func New(router *echo.Group, desc map[reflect.Type]Method, logger *log.Logger) *Server {
 	return &Server{
 		router: router,
 		desc:   desc,
+		logger: logger,
 	}
 }
 
@@ -40,42 +43,64 @@ type ResultBase struct {
 	Message string `json:"message"`
 }
 
-func HandleRestFunc[T func(PU, PC) (R, error), PU any, PC any, R any](s *Server, handle T) {
+func HandleRestFunc[T func(Context, PU, PC) (R, error), PU any, PC any, R any](s *Server, handle T) {
 	typ := reflect.TypeOf(new(T))
 	desc, ok := s.desc[typ]
 	if !ok {
 		log.Panicln(fmt.Sprintf("no such api for type: %s", typ.String()))
 	}
-	s.router.HandleFunc(fmt.Sprintf("/%s", desc.Name), func(writer http.ResponseWriter, request *http.Request) {
-		vars := mux.Vars(request)
+	var fn any = nil
+	switch desc.Method {
+	case "GET":
+		fn = s.router.GET
+		break
+	case "POST":
+		fn = s.router.POST
+		break
+	case "PUT":
+		fn = s.router.PUT
+		break
+	case "DELETE":
+		fn = s.router.DELETE
+		break
+	case "PATCH":
+		fn = s.router.PATCH
+		break
+	}
+	if fn == nil {
+		return
+	}
+	fn(fmt.Sprintf("/%s", desc.Name), func(ctx echo.Context) error {
+		vars := map[string]string{}
+		for _, name := range ctx.ParamNames() {
+			vars[name] = ctx.Param(name)
+		}
 		varsRaw, err := json.Marshal(vars)
 		if err != nil {
-			// TODO:
-			writer.WriteHeader(http.StatusBadRequest)
-			return
+			if s.logger != nil {
+				s.logger.Println("[dogma]", err)
+			}
+			return ctx.String(http.StatusBadRequest, "")
 		}
 		urlParam, err := typedParse[PU](varsRaw)
 		if err != nil {
-			// TODO:
-			writer.WriteHeader(http.StatusBadRequest)
-			return
+			if s.logger != nil {
+				s.logger.Println("[dogma]", err)
+			}
+			return ctx.String(http.StatusBadRequest, "")
 		}
 		commonParam := new(PC)
 		if desc.Method == http.MethodPost {
-			data, err := io.ReadAll(request.Body)
+			commonParam := new(PC)
+			err := (&echo.DefaultBinder{}).BindBody(ctx, commonParam)
 			if err != nil {
-				// TODO:
-				writer.WriteHeader(http.StatusBadRequest)
-				return
-			}
-			commonParam, err = typedParse[PC](data)
-			if err != nil {
-				// TODO:
-				writer.WriteHeader(http.StatusBadRequest)
-				return
+				if s.logger != nil {
+					s.logger.Println("[dogma]", err)
+				}
+				return ctx.String(http.StatusBadRequest, "")
 			}
 		}
-		ret, err := handle(*urlParam, *commonParam)
+		ret, err := handle(ctx, *urlParam, *commonParam)
 		result := struct {
 			ResultBase
 			R
@@ -85,12 +110,6 @@ func HandleRestFunc[T func(PU, PC) (R, error), PU any, PC any, R any](s *Server,
 		} else {
 			result.R = ret
 		}
-		raw, err := json.Marshal(ret)
-		if err != nil {
-			// TODO:
-			writer.WriteHeader(http.StatusBadRequest)
-			return
-		}
-		writer.Write(raw)
-	}).Methods(desc.Method)
+		return ctx.JSON(http.StatusOK, ret)
+	})
 }

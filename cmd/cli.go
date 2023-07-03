@@ -2,7 +2,7 @@ package main
 
 import (
 	"flag"
-	"github.com/azurity/go-dogma/cmd/generator"
+	"github.com/Tp0t-Team/go-dogma/cmd/generator"
 	"log"
 	"os"
 )

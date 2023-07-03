@@ -90,7 +90,7 @@ func RenderGolang(endpoints []Endpoint, types map[string]string, config *GolangC
 		if _, err := os.Stat(filepath.Join(folderName, fileName)); os.IsNotExist(err) {
 			file, _ := os.Create(filepath.Join(folderName, fileName))
 			file.Write(goFileGenerateLine)
-			file.Write([]byte(fmt.Sprintf("package %s\n\nimport \"%s\"\n\ntype Null = %s.Null\n\n", packageName, config.Package, globalPackage)))
+			file.Write([]byte(fmt.Sprintf("package %s\n\nimport (\n\t\"%s\"\n\t\"github.com/Tp0t-Team/go-dogma\"\n)\n\ntype Null = %s.Null\n\n", packageName, config.Package, globalPackage)))
 			file.Close()
 		}
 
@@ -121,14 +121,14 @@ func RenderGolang(endpoints []Endpoint, types map[string]string, config *GolangC
 		} else if endpoint.RetType[0] == '{' {
 			retType = "*" + globalPackage + "." + endpointName + "Ret"
 		}
-		codeFile.Write([]byte(fmt.Sprintf("type %s = func(urlParam %sURLParam, commonParam %sCommonParam) (%s, error)\n\n", endpointName, endpointName, endpointName, retType)))
+		codeFile.Write([]byte(fmt.Sprintf("type %s = func(ctx dogma.Context, urlParam %sURLParam, commonParam %sCommonParam) (%s, error)\n\n", endpointName, endpointName, endpointName, retType)))
 		codeFile.Close()
 	}
 
 	descFile, _ := os.OpenFile(filepath.Join(config.Path, "desc.go"), os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0666)
 	descFile.Write(goFileGenerateLine)
 
-	descFile.Write([]byte(fmt.Sprintf("package %s\n\nimport (\n\t\"github.com/azurity/go-dogma\"\n\t\"reflect\"\n\n", globalPackage)))
+	descFile.Write([]byte(fmt.Sprintf("package %s\n\nimport (\n\t\"github.com/Tp0t-Team/go-dogma\"\n\t\"reflect\"\n\n", globalPackage)))
 
 	sortedPack := []string{}
 	for name, _ := range packages {
@@ -166,7 +166,8 @@ func RenderGolang(endpoints []Endpoint, types map[string]string, config *GolangC
 
 		for _, item := range endpoint.Param {
 			if item.Role == ParamRoleURL {
-				pathPart = append(pathPart, "{"+item.Name+"}")
+				//pathPart = append(pathPart, "{"+item.Name+"}")
+				pathPart = append(pathPart, ":"+item.Name)
 			}
 		}
 		descFile.Write([]byte(fmt.Sprintf("\treflect.TypeOf(new(%s.%s)): {Name: \"/%s\", Method: \"%s\"},\n", packRename, endpointName, strings.Join(pathPart, "/"), endpoint.Method)))
