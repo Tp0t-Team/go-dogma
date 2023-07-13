@@ -49,7 +49,7 @@ func HandleRestFunc[T func(Context, PU, PC) (R, error), PU any, PC any, R any](s
 	if !ok {
 		log.Panicln(fmt.Sprintf("no such api for type: %s", typ.String()))
 	}
-	var fn any = nil
+	var fn func(path string, h echo.HandlerFunc, m ...echo.MiddlewareFunc) *echo.Route = nil
 	switch desc.Method {
 	case "GET":
 		fn = s.router.GET
